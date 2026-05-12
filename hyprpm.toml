@@ -1,0 +1,13 @@
+[repository]
+name = "hyprscrollexpo"
+authors = ["GodKeawa"]
+
+[hyprscrollexpo]
+description = "hyprscrollexpo — niri scroll expo plugin for Hyprland"
+authors = ["GodKeawa"]
+output = "hyprscrollexpo.so"
+build = [
+    "make all"
+]
+
+since_hyprland = 6066
