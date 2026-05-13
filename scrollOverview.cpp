@@ -52,8 +52,12 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
     // 负责收集工作区状态、初始化动画变量以及挂载各种输入/窗口事件监听器
     // -----------------------------------------------------
     static const CConfigValue<Config::FLOAT> PDEFAULTZOOM("plugin:hyprexpo:scrolling:default_zoom");
+    static const CConfigValue<Config::INTEGER> ACOL("plugin:hyprexpo:scrolling:active_color");
+    static const CConfigValue<Config::INTEGER> ICOL("plugin:hyprexpo:scrolling:inactive_color");
+    ACTIVE_COLOR = CHyprColor(*ACOL);
+    INACTIVE_COLOR = CHyprColor(*ICOL);
 
-    const auto          PMONITOR = Desktop::focusState()->monitor();
+    const auto PMONITOR = Desktop::focusState()->monitor();
     pMonitor                     = PMONITOR;
 
     for (const auto& w : g_pCompositor->m_workspaces) {
@@ -571,9 +575,9 @@ void CScrollOverview::fullRender() {
                  
                  CHyprColor col;
                  if (img->pWindow == Desktop::focusState()->window()) {
-                     col = CHyprColor{0.2, 0.8, 1.0, 0.9};
+                     col = ACTIVE_COLOR;
                  } else {
-                     col = CHyprColor{0.35, 0.35, 0.35, 0.67};
+                     col = INACTIVE_COLOR;
                  }
 
                  Render::GL::g_pHyprOpenGL->renderRect(borderBox, col, Render::GL::CHyprOpenGLImpl::SRectRenderData{.round = (int)(5 * pMonitor->m_scale)});

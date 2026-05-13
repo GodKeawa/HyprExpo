@@ -25,6 +25,8 @@ A great start to configure this plugin would be adding this code to the `plugin`
                 scroll_moves_up_down = 1,
                 follow_mouse = 1,
                 default_zoom = 0.5,
+                active_color = "rgba(33ccffee)",
+                inactive_color = "rgba(595959aa)",
             },
         },
     },
@@ -43,8 +45,10 @@ skip_empty | boolean | whether the grid displays workspaces sequentially by id u
 gesture_distance | number | how far is the max for the gesture | `300`
 layout | string | overview rendering style, set to `scrolling` to use scrollable overview | `grid`
 scrolling:scroll_moves_up_down | integer | `1` means scroll wheel moves workplaces vertically, `0` zooming | `1`
-scrollling:follow_mouse | integer | `1` means focus follows mouse, `0` don't | `1`
+scrolling:follow_mouse | integer | `1` means focus follows mouse, `0` don't | `1`
 scrolling:default_zoom | float | the zoom scale for windows in scroll layout | `0.5`
+scrolling:active_color | color | the color of the border of the active workspace in scroll layout | `rgba(33ccffee)`
+scrolling:inactive_color | color | the color of the border of the inactive workspaces in scroll layout | `rgba(595959aa)`
 
 ### Keywords
 
