@@ -80,46 +80,118 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
         info.cancelled    = true;
         lastMousePosLocal = g_pInputManager->getMouseCoordsInternal() - pMonitor->m_position;
 
+        hoveredWindow.reset();
         if (draggedWindow) {
-            Vector2D diff = lastMousePosLocal - dragStartCursorPos;
+            PHLWINDOW pDragged = draggedWindow.lock();
+            Vector2D  diff     = lastMousePosLocal - dragStartCursorPos;
             if (!isDragging && diff.size() > 5.0) {
                 isDragging = true;
             }
             if (isDragging) {
                 dragOffset = diff;
+
+                // Tiled reordering logic (skip for floating windows)
+                if (pDragged && !pDragged->m_isFloating) {
+                    const auto VIEWPORT_CENTER = CBox{{}, pMonitor->m_size}.middle();
+                    size_t     activeIdx       = 0;
+                    for (size_t i = 0; i < images.size(); ++i) {
+                        if (images[i]->pWorkspace && images[i]->pWorkspace == startedOn) {
+                            activeIdx = i;
+                            break;
+                        }
+                    }
+
+                    float yoff = -(float)activeIdx * pMonitor->m_size.y * scale->value();
+                    for (const auto& wimg : images) {
+                        for (auto it = wimg->windowImages.rbegin(); it != wimg->windowImages.rend(); ++it) {
+                            const auto& img = *it;
+                            if (img->pWindow == draggedWindow)
+                                continue;
+
+                            CBox texbox = {img->pWindow->m_realPosition->value() - pMonitor->m_position, img->pWindow->m_realSize->value()};
+                            texbox.translate(-VIEWPORT_CENTER).scale(scale->value()).translate(VIEWPORT_CENTER).translate(-viewOffset->value() * scale->value());
+                            texbox.translate({0.F, yoff});
+
+                            if (texbox.containsPoint(lastMousePosLocal)) {
+                                hoveredWindow = img->pWindow;
+                                insertBefore  = lastMousePosLocal.x < texbox.middle().x;
+                                break;
+                            }
+                        }
+                        if (hoveredWindow)
+                            break;
+                        yoff += pMonitor->m_size.y * scale->value();
+                    }
+                }
+
                 damage();
             }
         }
-        
+
         updateHoverFocus();
     };
 
-    auto onPress = [this]() {
-        if (closing) return;
+    auto onPress = [this](uint32_t button) {
+        if (closing)
+            return;
         selectHoveredWorkspace();
         if (closeOnWindow) {
-            draggedWindow = closeOnWindow;
-            draggedWindowOriginalWorkspace = closeOnWorkspace;
-            dragStartCursorPos = lastMousePosLocal;
-            dragOffset = {0.F, 0.F};
-            isDragging = false;
+            if (button == 273 /* BTN_RIGHT */) {
+                draggedWindow                  = closeOnWindow;
+                draggedWindowOriginalWorkspace = closeOnWorkspace;
+                dragStartCursorPos             = lastMousePosLocal;
+                dragOffset                     = {0.F, 0.F};
+                isDragging                     = true;
+            } else if (button == 272 /* BTN_LEFT */) {
+                close();
+            }
+        } else if (closeOnWorkspace && button == 272 /* BTN_LEFT */) {
+            close();
         }
     };
 
     auto onRelease = [this]() {
-        if (closing) return;
+        if (closing)
+            return;
         if (draggedWindow && isDragging) {
             selectHoveredWorkspace();
-            if (closeOnWorkspace && closeOnWorkspace != draggedWindowOriginalWorkspace) {
-                g_pCompositor->moveWindowToWorkspaceSafe(draggedWindow.lock(), closeOnWorkspace);
+            PHLWINDOW pWindow = draggedWindow.lock();
+            if (pWindow) {
+                if (pWindow->m_isFloating) {
+                    // 1. Floating Window Logic: strictly update position and optionally change workspace
+                    Vector2D newPos = pWindow->m_realPosition->value() + dragOffset / scale->value();
+                    pWindow->m_realPosition->setValueAndWarp(newPos);
+                    pWindow->updateWindowDecos();
+
+                    if (closeOnWorkspace && closeOnWorkspace != draggedWindowOriginalWorkspace) {
+                        g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+                    }
+                } else {
+                    // 2. Tiled Window Logic
+                    if (hoveredWindow) {
+                        // Priority 1: Specific target window hovered -> Swap/Insert
+                        if (closeOnWorkspace && closeOnWorkspace != draggedWindowOriginalWorkspace)
+                            g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+                        
+                        g_layoutManager->switchTargets(pWindow->layoutTarget(), hoveredWindow.lock()->layoutTarget());
+                    } else if (closeOnWorkspace) {
+                        // Priority 2: Dropped on workspace but no window -> Move to workspace
+                        g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+
+                        // Left/Right Bias logic: Move to extreme left/right of the target workspace
+                        bool farLeft = lastMousePosLocal.x < pMonitor->m_size.x / 2.0;
+                        // Simulate directional moves to hit the edge
+                        for (int i = 0; i < 10; ++i)
+                            g_layoutManager->moveInDirection(pWindow->layoutTarget(), farLeft ? "l" : "r", true);
+                    }
+                }
             }
+
             draggedWindow.reset();
+            hoveredWindow.reset();
             isDragging = false;
             dragOffset = {0.F, 0.F};
             redrawAll();
-        } else {
-            selectHoveredWorkspace();
-            close();
         }
     };
 
@@ -144,24 +216,27 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
         }
     });
 
-    mouseButtonHook = Event::bus()->m_events.input.mouse.button.listen([this, onPress, onRelease](IPointer::SButtonEvent e, Event::SCallbackInfo& info) { 
-        if (closing) return;
+    mouseButtonHook = Event::bus()->m_events.input.mouse.button.listen([this, onPress, onRelease](IPointer::SButtonEvent e, Event::SCallbackInfo& info) {
+        if (closing)
+            return;
         info.cancelled = true;
         if (e.state == WL_POINTER_BUTTON_STATE_PRESSED) {
-            onPress();
+            onPress(e.button);
         } else if (e.state == WL_POINTER_BUTTON_STATE_RELEASED) {
             onRelease();
         }
     });
 
-    touchDownHook   = Event::bus()->m_events.input.touch.down.listen([this, onPress](ITouch::SDownEvent e, Event::SCallbackInfo& info) { 
-        if (closing) return;
+    touchDownHook = Event::bus()->m_events.input.touch.down.listen([this, onPress](ITouch::SDownEvent e, Event::SCallbackInfo& info) {
+        if (closing)
+            return;
         info.cancelled = true;
-        onPress();
+        onPress(273 /* BTN_RIGHT to simulate drag start on touch */);
     });
-    
+
     touchUpHook = Event::bus()->m_events.input.touch.up.listen([this, onRelease](ITouch::SUpEvent e, Event::SCallbackInfo& info) {
-        if (closing) return;
+        if (closing)
+            return;
         info.cancelled = true;
         onRelease();
     });
@@ -208,45 +283,33 @@ void CScrollOverview::selectHoveredWorkspace() {
     }
 
     const auto VIEWPORT_CENTER = CBox{{}, pMonitor->m_size}.middle();
+    const float slotHeight = pMonitor->m_size.y * scale->value();
+    const float topOffset = VIEWPORT_CENTER.y * (1.0f - scale->value()) - viewOffset->value().y * scale->value();
 
-    float      yoff = -(float)activeIdx * pMonitor->m_size.y * scale->value();
-
-    // First pass: Check if we hit any workspace background
-    for (const auto& wimg : images) {
-        CBox workspaceBox = {{}, pMonitor->m_size};
-        workspaceBox.translate(-VIEWPORT_CENTER).scale(scale->value()).translate(VIEWPORT_CENTER).translate(-viewOffset->value() * scale->value());
-        workspaceBox.translate({0.F, yoff});
-
-        if (workspaceBox.containsPoint(lastMousePosLocal)) {
-            closeOnWorkspace = wimg->pWorkspace;
-            break;
-        }
-        yoff += pMonitor->m_size.y * scale->value();
+    // Determine workspace based on vertical slots (no gaps)
+    int hoveredIdx = std::floor((lastMousePosLocal.y - topOffset) / slotHeight) + (int)activeIdx;
+    
+    if (hoveredIdx >= 0 && hoveredIdx < (int)images.size()) {
+        closeOnWorkspace = images[hoveredIdx]->pWorkspace;
     }
 
-    // Second pass: Check if we hit any windows
-    yoff       = -(float)activeIdx * pMonitor->m_size.y * scale->value();
-    bool found = false;
+    // Second pass: Check if we hit any windows (this is fine as is)
+    float yoff = -(float)activeIdx * slotHeight;
     for (const auto& wimg : images) {
         for (auto it = wimg->windowImages.rbegin(); it != wimg->windowImages.rend(); ++it) {
             const auto& img    = *it;
             CBox        texbox = {img->pWindow->m_realPosition->value() - pMonitor->m_position, img->pWindow->m_realSize->value()};
 
-            // scale the box to the viewport center
             texbox.translate(-VIEWPORT_CENTER).scale(scale->value()).translate(VIEWPORT_CENTER).translate(-viewOffset->value() * scale->value());
-
             texbox.translate({0.F, yoff});
 
             if (texbox.containsPoint(lastMousePosLocal)) {
                 closeOnWindow    = img->pWindow;
-                closeOnWorkspace = wimg->pWorkspace;
-                found            = true;
+                closeOnWorkspace = wimg->pWorkspace; // Ensure workspace matches window
                 break;
             }
         }
-        if (found)
-            break;
-        yoff += pMonitor->m_size.y * scale->value();
+        yoff += slotHeight;
     }
 }
 
@@ -640,6 +703,19 @@ void CScrollOverview::fullRender() {
                 texbox.translate(dragOffset);
                 draggedTask = {img, borderBox, texbox};
                 continue; // Skip rendering it now
+            }
+
+            // Parting animation
+            if (isDragging && hoveredWindow && img->pWindow->m_workspace == hoveredWindow.lock()->m_workspace) {
+                const float GAP = 40.0f * scale->value();
+                if (img->pWindow == hoveredWindow.lock()) {
+                    Vector2D offset = insertBefore ? Vector2D{(double)GAP, 0.0} : Vector2D{-(double)GAP, 0.0};
+                    borderBox.translate(offset);
+                    texbox.translate(offset);
+                } else {
+                    // check if this window is after hoveredWindow in the image list?
+                    // actually, let's just shift hoveredWindow for now as a simple cue.
+                }
             }
 
             borderBox.scale(pMonitor->m_scale).round();
