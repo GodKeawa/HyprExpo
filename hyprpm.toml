@@ -1,11 +1,11 @@
 [repository]
-name = "hyprscrollexpo"
+name = "hyprexpo"
 authors = ["GodKeawa"]
 
-[hyprscrollexpo]
-description = "hyprscrollexpo — niri scroll expo plugin for Hyprland"
+[hyprexpo]
+description = "hyprexpo — niri scroll expo plugin for Hyprland"
 authors = ["GodKeawa"]
-output = "hyprscrollexpo.so"
+output = "hyprexpo.so"
 build = [
     "make all"
 ]
