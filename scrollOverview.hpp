@@ -103,8 +103,8 @@ class CScrollOverview : public IOverview {
     Vector2D                         dragStartCursorPos;
     Vector2D                         dragOffset;
 
-    PHLWINDOWREF                     hoveredWindow; // The window being hovered over during a drag
-    bool                             insertBefore = false; // Whether to insert before or after the hovered window
+    PHLWORKSPACE                     dragHoveredWorkspace;
+    PHLWINDOWREF                     hoveredWindow;
 
     CHyprSignalListener              touchUpHook;
 

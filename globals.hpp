@@ -11,10 +11,10 @@ inline HANDLE PHANDLE      = nullptr;
 
 
 struct SConfig {
-    SP<Config::Values::CIntValue>   scrollMovesUpDown;
-    SP<Config::Values::CFloatValue> defaultZoom;
-    SP<Config::Values::CIntValue>   followMouse;
-    SP<Config::Values::CIntValue>   gestureDistance;
+    SP<Config::Values::CIntValue>      scrollMovesUpDown;
+    SP<Config::Values::CFloatValue>    defaultZoom;
+    SP<Config::Values::CIntValue>      followMouse;
+    SP<Config::Values::CIntValue>      gestureDistance;
 };
 
 inline UP<SConfig> configValues;

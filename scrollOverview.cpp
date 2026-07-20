@@ -141,7 +141,8 @@ void CScrollOverview::onCursorMove() {
 
     lastMousePosLocal = g_pInputManager->getMouseCoordsInternal() - pMonitor->m_position;
 
-    hoveredWindow.reset();
+    dragHoveredWorkspace = nullptr;
+    hoveredWindow = nullptr;
     if (draggedWindow) {
         PHLWINDOW pDragged = draggedWindow.lock();
         Vector2D  diff     = lastMousePosLocal - dragStartCursorPos;
@@ -151,23 +152,30 @@ void CScrollOverview::onCursorMove() {
         if (isDragging) {
             dragOffset = diff;
 
-            // Tiled reordering logic (skip for floating windows)
-            if (pDragged && !pDragged->m_isFloating) {
-                const auto VIEWPORT_CENTER = CBox{{}, pMonitor->m_size}.middle();
-                size_t     activeIdx       = 0;
-                for (size_t i = 0; i < images.size(); ++i) {
-                    if (images[i]->pWorkspace && images[i]->pWorkspace == startedOn) {
-                        activeIdx = i;
-                        break;
-                    }
+            // Swap detection logic: simply find the window under cursor
+            const auto VIEWPORT_CENTER = CBox{{}, pMonitor->m_size}.middle();
+            size_t     activeIdx       = 0;
+            for (size_t i = 0; i < images.size(); ++i) {
+                if (images[i]->pWorkspace && images[i]->pWorkspace == startedOn) {
+                    activeIdx = i;
+                    break;
                 }
+            }
 
-                float yoff = -(float)activeIdx * pMonitor->m_size.y * scale->value();
-                for (const auto& wimg : images) {
+            hoveredWindow = nullptr;
+            dragHoveredWorkspace = nullptr;
+
+            float yoff = -(float)activeIdx * pMonitor->m_size.y * scale->value();
+            for (const auto& wimg : images) {
+                CBox wsBox = {{}, pMonitor->m_size};
+                wsBox.translate(-VIEWPORT_CENTER).scale(scale->value()).translate(VIEWPORT_CENTER).translate(-viewOffset->value() * scale->value());
+                wsBox.translate({0.F, yoff});
+
+                if (wsBox.containsPoint(lastMousePosLocal)) {
+                    dragHoveredWorkspace = wimg->pWorkspace;
                     for (auto it = wimg->windowImages.rbegin(); it != wimg->windowImages.rend(); ++it) {
                         const auto& img = *it;
-                        if (img->pWindow == draggedWindow)
-                            continue;
+                        if (!img->pWindow || img->pWindow == draggedWindow) continue;
 
                         CBox texbox = {img->pWindow->m_realPosition->value() - pMonitor->m_position, img->pWindow->m_realSize->value()};
                         texbox.translate(-VIEWPORT_CENTER).scale(scale->value()).translate(VIEWPORT_CENTER).translate(-viewOffset->value() * scale->value());
@@ -175,33 +183,20 @@ void CScrollOverview::onCursorMove() {
 
                         if (texbox.containsPoint(lastMousePosLocal)) {
                             hoveredWindow = img->pWindow;
-                            insertBefore  = lastMousePosLocal.x < texbox.middle().x;
                             break;
                         }
                     }
-                    if (hoveredWindow)
-                        break;
-                    yoff += pMonitor->m_size.y * scale->value();
+                    break;
                 }
+                yoff += pMonitor->m_size.y * scale->value();
             }
 
-            // Update parting offset for all windows dynamically based on hoveredWindow
+            // Ensure parting offset is fully reset
             for (const auto& wimg : images) {
                 for (auto it = wimg->windowImages.rbegin(); it != wimg->windowImages.rend(); ++it) {
                     const auto& img = *it;
-                    if (!img->pWindow || img->pWindow == draggedWindow)
-                        continue;
-                    
-                    Vector2D targetOffset = {0.0, 0.0};
-                    if (hoveredWindow && img->pWindow->m_workspace == hoveredWindow.lock()->m_workspace) {
-                        const float GAP = 40.0f * scale->value();
-                        if (img->pWindow == hoveredWindow.lock()) {
-                            targetOffset = insertBefore ? Vector2D{(double)GAP, 0.0} : Vector2D{-(double)GAP, 0.0};
-                        }
-                    }
-
-                    if (img->partingOffset->value() != targetOffset && !img->partingOffset->isBeingAnimated()) {
-                        *(img->partingOffset) = targetOffset; // triggers animation
+                    if (img->partingOffset->value() != Vector2D{0.0, 0.0} && !img->partingOffset->isBeingAnimated()) {
+                        *(img->partingOffset) = Vector2D{0.0, 0.0};
                     }
                 }
             }
@@ -254,9 +249,6 @@ void CScrollOverview::onRelease() {
                     g_layoutManager->switchTargets(pWindow->layoutTarget(), hoveredWindow.lock()->layoutTarget());
                 } else if (closeOnWorkspace) {
                     Desktop::globalWindowController()->moveWindowToWorkspace(pWindow, closeOnWorkspace);
-                    bool farLeft = lastMousePosLocal.x < pMonitor->m_size.x / 2.0;
-                    for (int i = 0; i < 10; ++i)
-                        g_layoutManager->moveInDirection(pWindow->layoutTarget(), farLeft ? "l" : "r", true);
                 }
             }
         }
