@@ -342,7 +342,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::addConfigValueV2(PHANDLE, configValues->followMouse);
     HyprlandAPI::addConfigValueV2(PHANDLE, configValues->gestureDistance);
 
-    return {"hyprexpo", "A plugin for an overview", "Vaxry", "1.0"};
+    return {.name="hyprexpo", .description="A plugin for a niri overview", .author="GodKeawa", .version="1.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
