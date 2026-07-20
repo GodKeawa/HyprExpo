@@ -1,13 +1,15 @@
 #include "OverviewPassElement.hpp"
 #include <hyprland/src/render/OpenGL.hpp>
-#include "overview.hpp"
+#include "globals.hpp"
+#include "scrollOverview.hpp"
 
 COverviewPassElement::COverviewPassElement() {
     ;
 }
 
 std::vector<UP<IPassElement>> COverviewPassElement::draw() {
-    g_pOverview->fullRender();
+    if (g_pOverview)
+        g_pOverview->fullRender();
     return {};
 }
 
@@ -20,15 +22,23 @@ bool COverviewPassElement::needsPrecomputeBlur() {
 }
 
 std::optional<CBox> COverviewPassElement::boundingBox() {
-    if (!g_pOverview->pMonitor)
+    if (!g_pOverview || !g_pOverview->pMonitor)
         return std::nullopt;
 
     return CBox{{}, g_pOverview->pMonitor->m_size};
 }
 
 CRegion COverviewPassElement::opaqueRegion() {
-    if (!g_pOverview->pMonitor)
+    if (!g_pOverview || !g_pOverview->pMonitor)
         return CRegion{};
 
     return CBox{{}, g_pOverview->pMonitor->m_size};
+}
+
+const char* COverviewPassElement::passName() {
+    return "COverviewPassElement";
+}
+
+ePassElementType COverviewPassElement::type() {
+    return EK_CUSTOM;
 }

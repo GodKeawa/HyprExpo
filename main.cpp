@@ -24,7 +24,7 @@ using namespace Hyprutils::String;
 #include <hyprland/src/desktop/state/GlobalWindowController.hpp>
 #include <hyprland/src/state/WorkspaceState.hpp>
 #include "globals.hpp"
-#include "overview.hpp"
+
 #include "scrollOverview.hpp"
 #include "ExpoGesture.hpp"
 #include "OverviewPassElement.hpp"
@@ -131,8 +131,6 @@ static SDispatchResult bringWindowFromWorkspace(int64_t sourceWorkspaceID) {
 }
 
 static SDispatchResult onExpoDispatcher(std::string arg) {
-    static const CConfigValue<Config::STRING> PLAYOUT("plugin:hyprexpo:layout");
-    IS_SCROLLING = *PLAYOUT == "scrolling";
 
     if (g_pOverview && g_pOverview->m_isSwiping)
         return {.success = false, .error = "already swiping"};
@@ -158,10 +156,7 @@ static SDispatchResult onExpoDispatcher(std::string arg) {
             g_pOverview->close();
         else {
             renderingOverview = true;
-            if (IS_SCROLLING)
-                g_pOverview = std::make_unique<CScrollOverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
-            else
-                g_pOverview = std::make_unique<COverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
+            g_pOverview = std::make_unique<CScrollOverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
             renderingOverview = false;
         }
         return {};
@@ -177,10 +172,7 @@ static SDispatchResult onExpoDispatcher(std::string arg) {
         return {};
 
     renderingOverview = true;
-    if (IS_SCROLLING)
-        g_pOverview = std::make_unique<CScrollOverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
-    else
-        g_pOverview = std::make_unique<COverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
+    g_pOverview = std::make_unique<CScrollOverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
     renderingOverview = false;
     return {};
 }
@@ -335,41 +327,26 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
             g_pHyprRenderer->m_renderPass.add(makeUnique<COverviewPassElement>());
         }
     });
-
     HyprlandAPI::addDispatcherV2(PHANDLE, "hyprexpo:expo", ::onExpoDispatcher);
     HyprlandAPI::addLuaFunction(PHANDLE, "hyprexpo", "expo", ::luaExpo);
 
     configValues = makeUnique<SConfig>();
 
-    configValues->layout = makeShared<Config::Values::CStringValue>("plugin:hyprexpo:layout", "layout", "grid");
+    configValues->scrollMovesUpDown = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:scroll_moves_up_down", "scroll moves up/down", 1);
+    configValues->defaultZoom       = makeShared<Config::Values::CFloatValue>("plugin:hyprexpo:default_zoom", "default zoom", 0.5f);
+    configValues->followMouse       = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:follow_mouse", "scroll follow mouse", 1);
+    configValues->gestureDistance   = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:gesture_distance", "gesture distance", 200);
 
-    configValues->columns         = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:grid:columns", "columns", 3);
-    configValues->gapSize         = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:grid:gap_size", "gap size", 5);
-    configValues->bgCol           = makeShared<Config::Values::CColorValue>("plugin:hyprexpo:grid:bg_col", "background color", 0xFF111111);
-    configValues->workspaceMethod = makeShared<Config::Values::CStringValue>("plugin:hyprexpo:grid:workspace_method", "workspace method", "center current");
-    configValues->skipEmpty       = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:grid:skip_empty", "skip empty workspaces", 0);
-    configValues->gestureDistance = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:grid:gesture_distance", "gesture distance", 200);
-
-    configValues->scrollMovesUpDown = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:scrolling:scroll_moves_up_down", "scroll moves up/down", 1);
-    configValues->defaultZoom       = makeShared<Config::Values::CFloatValue>("plugin:hyprexpo:scrolling:default_zoom", "default zoom", 0.5f);
-    configValues->followMouse       = makeShared<Config::Values::CIntValue>("plugin:hyprexpo:scrolling:follow_mouse", "scroll follow mouse", 1);
-
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->columns);
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->gapSize);
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->bgCol);
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->workspaceMethod);
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->skipEmpty);
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->gestureDistance);
-
-    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->layout);
     HyprlandAPI::addConfigValueV2(PHANDLE, configValues->scrollMovesUpDown);
     HyprlandAPI::addConfigValueV2(PHANDLE, configValues->defaultZoom);
     HyprlandAPI::addConfigValueV2(PHANDLE, configValues->followMouse);
+    HyprlandAPI::addConfigValueV2(PHANDLE, configValues->gestureDistance);
 
     return {"hyprexpo", "A plugin for an overview", "Vaxry", "1.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
+
     g_pHyprRenderer->m_renderPass.removeAllOfType("COverviewPassElement");
 
     g_unloading = true;

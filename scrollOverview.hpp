@@ -43,6 +43,11 @@ class CScrollOverview : public IOverview {
     void   highlightHoverDebug();
     void   moveViewportWorkspace(bool up);
 
+    void   onCursorMove();
+    void   onPress(uint32_t button);
+    void   onRelease();
+    void   onScroll(double delta, uint32_t axis);
+
     bool   damageDirty              = false;
     size_t viewportCurrentWorkspace = 0;
 
@@ -52,6 +57,7 @@ class CScrollOverview : public IOverview {
         bool                     highlight = false;
         CHyprSignalListener      windowCommit;
         Vector2D                 lastWindowPosition, lastWindowSize;
+        PHLANIMVAR<Vector2D>     partingOffset;
     };
 
     void redrawWindowImage(SP<SWindowImage>);
@@ -102,5 +108,4 @@ class CScrollOverview : public IOverview {
 
     CHyprSignalListener              touchUpHook;
 
-    friend class CScrollOverviewPassElement;
 };

@@ -1,7 +1,7 @@
 # HyprExpo
 HyprExpo is an overview plugin like niri. Forked from hyprland-plugins:hyprexpo as the original plugin is no longer maintained.
 
-Currently supports Hyprland V0.55.4.
+Currently supports Hyprland V0.56.0.
 
 https://github.com/user-attachments/assets/c5102f6a-d43c-4c24-8f65-e7308691e8c5
 
@@ -9,55 +9,35 @@ https://github.com/user-attachments/assets/c5102f6a-d43c-4c24-8f65-e7308691e8c5
 Same as normal plugins.
 
 ## Features
-- Two layouts: grid and scrolling
-    - Grid layout: displays all workspaces in a grid
-      - supports gestures to switch workspaces
-      - just takes the snapshot of the workspace and displays it in the grid, so performance and compatibility is good
-    - Scrolling layout: displays workspaces in a horizontal line
-      - supports scroll wheel to switch workspaces
-      - supports gestures to switch workspaces or windows by left mouse button
-      - supports drag and drop windows to switch workspaces by right mouse button
+- Displays workspaces in a horizontal line, similar to Niri.
+- Supports scroll wheel to switch workspaces.
+- Supports gestures to switch workspaces or windows by left mouse button.
+- Supports drag and drop windows to switch workspaces by right mouse button.
+- Smooth parting animations when dragging and dropping windows.
 - Original border rendering supported(for active or inactive windows)
 
 ## Config
 A great start to configure this plugin would be adding this code to the `plugin` section of your hyprland configuration file:  
 ```ini
-# .config/hypr/hyprland.lua
+# .config/hypr/hyprland.conf
     plugin = {
         hyprexpo = {
-            layout = "scrolling",
-            scrolling = {
-                scroll_moves_up_down = 1,
-                follow_mouse = 1,
-                default_zoom = 0.5,
-            },
-            grid = {
-                columns = 3,
-                gap_size = 5,
-                bg_col = "rgba(33ccffee)",
-                workspace_method = "center current",
-                skip_empty = false,
-                gesture_distance = 300,
-            },
+            scroll_moves_up_down = 1,
+            follow_mouse = 1,
+            default_zoom = 0.5,
+            gesture_distance = 300,
         },
     },
 ```
 
 ### Properties
-Note that when layout is set to scrolling, properties for grid mode are ignored(not used). 
 
 | property                       | type                       | description                                                                                                                                | default          |
 | ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------- |
-| layout                         | string                     | overview rendering style, set to `scrolling` to use scrollable overview                                                                    | `grid`           |
-| grid:columns                   | number                     | how many desktops are displayed on one line                                                                                                | `3`              |
-| grid:gap_size                  | number                     | gap between desktops                                                                                                                       | `5`              |
-| grid:bg_col                    | color                      | color in gaps (between desktops)                                                                                                           | `rgb(000000)`    |
-| grid:workspace_method          | [center/first] [workspace] | position of the desktops                                                                                                                   | `center current` |
-| grid:skip_empty                | boolean                    | whether the grid displays workspaces sequentially by id using selector "r" (`false`) or skips empty workspaces using selector "m" (`true`) | `false`          |
-| grid:gesture_distance          | number                     | how far is the max for the gesture                                                                                                         | `300`            |
-| scrolling:scroll_moves_up_down | integer                    | `1` means scroll wheel moves workplaces vertically, `0` zooming                                                                            | `1`              |
-| scrolling:follow_mouse         | integer                    | `1` means focus follows mouse, `0` don't                                                                                                   | `1`              |
-| scrolling:default_zoom         | float                      | the zoom scale for windows in scroll layout                                                                                                | `0.5`            |
+| scroll_moves_up_down | integer                    | `1` means scroll wheel moves workplaces vertically, `0` zooming                                                                            | `1`              |
+| follow_mouse         | integer                    | `1` means focus follows mouse, `0` don't                                                                                                   | `1`              |
+| default_zoom         | float                      | the zoom scale for windows in scroll layout                                                                                                | `0.5`            |
+| gesture_distance          | number                     | how far is the max for the gesture                                                                                                         | `200`            |
 
 ### Keywords
 

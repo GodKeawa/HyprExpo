@@ -1,6 +1,5 @@
 #include "ExpoGesture.hpp"
-
-#include "overview.hpp"
+#include "scrollOverview.hpp"
 
 #include <algorithm>
 #include <hyprland/src/Compositor.hpp>
@@ -14,7 +13,7 @@ void CExpoGesture::begin(const ITrackpadGesture::STrackpadGestureBegin& e) {
     m_firstUpdate = true;
 
     if (!g_pOverview)
-        g_pOverview = std::make_unique<COverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
+        g_pOverview = std::make_unique<CScrollOverview>(Desktop::focusState()->monitor()->m_activeWorkspace);
     else {
         g_pOverview->selectHoveredWorkspace();
         g_pOverview->setClosing(true);
