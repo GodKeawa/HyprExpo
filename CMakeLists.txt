@@ -11,7 +11,6 @@ set(SRC
     main.cpp
     ExpoGesture.cpp
     OverviewPassElement.cpp
-    overview.cpp
     scrollOverview.cpp
 )
 
