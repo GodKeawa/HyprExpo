@@ -14,7 +14,7 @@
 // hyprland's fault, but cba to fix.
 constexpr bool ENABLE_LOWRES = false;
 
-class CMonitor;
+namespace Monitor { class CMonitor; }
 
 class COverview : public IOverview {
   public:

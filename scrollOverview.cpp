@@ -6,11 +6,11 @@
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/config/shared/actions/ConfigActions.hpp>
-#include <hyprland/src/managers/animation/AnimationManager.hpp>
-#include <hyprland/src/managers/animation/DesktopAnimationManager.hpp>
+#include <hyprland/src/animation/AnimationManager.hpp>
+#include <hyprland/src/animation/WorkspaceAnimationController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/layout/LayoutManager.hpp>
-#include <hyprland/src/managers/cursor/CursorShapeOverrideController.hpp>
+#include <hyprland/src/pointer/cursor/CursorShapeOverrideController.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
@@ -20,9 +20,12 @@
 #undef private
 #undef protected
 
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
+#include <hyprland/src/desktop/state/GlobalWindowController.hpp>
+#include <hyprland/src/desktop/view/Window.hpp>
+#include <hyprland/src/managers/fullscreen/FullscreenController.hpp>
 #include "globals.hpp"
-
-using namespace Hyprutils::String;
 
 static void clearWithColor(const CHyprColor& color) {
     glClearColor(color.r, color.g, color.b, color.a);
@@ -41,7 +44,7 @@ static void removeOverview(WP<Hyprutils::Animation::CBaseAnimatedVariable> thisp
 CScrollOverview::~CScrollOverview() {
     Render::GL::g_pHyprOpenGL->makeEGLCurrent();
     images.clear(); // otherwise we get a vram leak
-    Cursor::overrideController->unsetOverride(Cursor::CURSOR_OVERRIDE_UNKNOWN);
+    Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
     if (pMonitor)
         pMonitor->m_blurFBDirty = true;
 }
@@ -55,15 +58,15 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
     const auto PMONITOR = Desktop::focusState()->monitor();
     pMonitor            = PMONITOR;
 
-    for (const auto& w : g_pCompositor->m_workspaces) {
+    for (const auto& w : State::workspaceState()->workspacesCopy()) {
         if (w && w->m_monitor == pMonitor && !w->m_isSpecialWorkspace)
-            images.emplace_back(makeShared<SWorkspaceImage>(w.lock()));
+            images.emplace_back(makeShared<SWorkspaceImage>(w));
     }
 
     std::ranges::sort(images, [](const auto& a, const auto& b) { return a->pWorkspace->m_id < b->pWorkspace->m_id; });
 
-    g_pAnimationManager->createAnimation(1.F, scale, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
-    g_pAnimationManager->createAnimation(Vector2D{}, viewOffset, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
+    Animation::mgr()->createAnimation(1.F, scale, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
+    Animation::mgr()->createAnimation(Vector2D{}, viewOffset, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
 
     scale->setUpdateCallback(damageMonitor);
     viewOffset->setUpdateCallback(damageMonitor);
@@ -164,19 +167,19 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
                     pWindow->updateWindowDecos();
 
                     if (closeOnWorkspace && closeOnWorkspace != draggedWindowOriginalWorkspace) {
-                        g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+                        Desktop::globalWindowController()->moveWindowToWorkspace(pWindow, closeOnWorkspace);
                     }
                 } else {
                     // 2. Tiled Window Logic
                     if (hoveredWindow) {
                         // Priority 1: Specific target window hovered -> Swap/Insert
                         if (closeOnWorkspace && closeOnWorkspace != draggedWindowOriginalWorkspace)
-                            g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+                            Desktop::globalWindowController()->moveWindowToWorkspace(pWindow, closeOnWorkspace);
 
                         g_layoutManager->switchTargets(pWindow->layoutTarget(), hoveredWindow.lock()->layoutTarget());
                     } else if (closeOnWorkspace) {
                         // Priority 2: Dropped on workspace but no window -> Move to workspace
-                        g_pCompositor->moveWindowToWorkspaceSafe(pWindow, closeOnWorkspace);
+                        Desktop::globalWindowController()->moveWindowToWorkspace(pWindow, closeOnWorkspace);
 
                         // Left/Right Bias logic: Move to extreme left/right of the target workspace
                         bool farLeft = lastMousePosLocal.x < pMonitor->m_size.x / 2.0;
@@ -258,7 +261,7 @@ CScrollOverview::CScrollOverview(PHLWORKSPACE startedOn_, bool swipe_) : started
         damage(); // Ensure border is updated
     });
 
-    Cursor::overrideController->setOverride("left_ptr", Cursor::CURSOR_OVERRIDE_UNKNOWN);
+    Pointer::Cursor::overrideController->setOverride("left_ptr", Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
 
     redrawAll();
 
@@ -346,8 +349,8 @@ void CScrollOverview::moveViewportWorkspace(bool up) {
             PMONITOR->changeWorkspace(pWS, true, true, true);
 
             // Find first window to focus
-            for (auto& w : g_pCompositor->m_windows) {
-                if (w->m_workspace == pWS && validMapped(w)) {
+            for (auto& w : Desktop::windowState()->windows()) {
+                if (w->m_workspace == pWS && Desktop::View::validMapped(w)) {
                     Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
                     break;
                 }
@@ -432,8 +435,8 @@ void CScrollOverview::redrawWorkspace(PHLWORKSPACE workspace, bool forcelowres) 
     PMONITOR->m_size            = {30000, 30000}; // Hack to bypass isWindowVisible for off-screen scrolling windows
 
     std::vector<PHLWINDOW> windows;
-    for (const auto& w : g_pCompositor->m_windows) {
-        if (!validMapped(w) || w->m_workspace != workspace)
+    for (const auto& w : Desktop::windowState()->windows()) {
+        if (!Desktop::View::validMapped(w) || w->m_workspace != workspace)
             continue;
         windows.emplace_back(w);
     }
@@ -441,7 +444,7 @@ void CScrollOverview::redrawWorkspace(PHLWORKSPACE workspace, bool forcelowres) 
     // Sort windows to preserve rendering order (z-order): Tiled -> Floating -> Fullscreen
     std::ranges::stable_sort(windows, [](const PHLWINDOW& a, const PHLWINDOW& b) {
         auto getZLevel = [](const PHLWINDOW& w) -> int {
-            if (w->isFullscreen())
+            if (Fullscreen::controller()->isFullscreen(w))
                 return 2;
             if (w->m_isFloating)
                 return 1;
@@ -528,7 +531,7 @@ void CScrollOverview::redrawAll(bool forcelowres) {
 
     // 仅渲染背景
     for (auto& ls : pMonitor->m_layerSurfaceLayers[0]) {
-        if (validMapped(ls))
+        if (ls && ls->m_mapped)
             g_pHyprRenderer->renderLayer(ls.lock(), pMonitor.lock(), Time::steadyNow());
     }
 
@@ -580,16 +583,16 @@ void CScrollOverview::close(bool switchToSelection) {
             if (!Config::Actions::changeWorkspace(closeOnWorkspace))
                 Log::logger->log(Log::ERR, "[hyprexpo] Failed to change workspace on overview close");
 
-            g_pDesktopAnimationManager->startAnimation(closeOnWorkspace, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
-            g_pDesktopAnimationManager->startAnimation(OLDWS, CDesktopAnimationManager::ANIMATION_TYPE_OUT, false, true);
+            Animation::Workspace::startAnimation(closeOnWorkspace, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
+            Animation::Workspace::startAnimation(OLDWS, Animation::Workspace::ANIMATION_TYPE_OUT, false, true);
         }
 
         if (closeOnWindow && closeOnWindow->m_workspace == closeOnWorkspace) {
             Desktop::focusState()->fullWindowFocus(closeOnWindow.lock(), Desktop::FOCUS_REASON_KEYBIND);
         } else if (!closeOnWindow) {
             // Find first window to focus if we just clicked a workspace
-            for (auto& w : g_pCompositor->m_windows) {
-                if (w->m_workspace == closeOnWorkspace && validMapped(w)) {
+            for (auto& w : Desktop::windowState()->windows()) {
+                if (w->m_workspace == closeOnWorkspace && Desktop::View::validMapped(w)) {
                     Desktop::focusState()->fullWindowFocus(w, Desktop::FOCUS_REASON_KEYBIND);
                     break;
                 }

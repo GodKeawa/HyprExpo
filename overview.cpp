@@ -10,10 +10,11 @@
 #include <hyprland/src/config/ConfigManager.hpp>
 #include <hyprland/src/config/shared/actions/ConfigActions.hpp>
 #include <hyprland/src/config/shared/animation/AnimationTree.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
 #include <hyprland/src/helpers/Format.hpp>
-#include <hyprland/src/managers/animation/AnimationManager.hpp>
-#include <hyprland/src/managers/animation/DesktopAnimationManager.hpp>
-#include <hyprland/src/managers/cursor/CursorShapeOverrideController.hpp>
+#include <hyprland/src/animation/AnimationManager.hpp>
+#include <hyprland/src/animation/WorkspaceAnimationController.hpp>
+#include <hyprland/src/pointer/cursor/CursorShapeOverrideController.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
 #include <hyprland/src/helpers/time/Time.hpp>
@@ -54,7 +55,7 @@ static void damageMonitor(WP<Hyprutils::Animation::CBaseAnimatedVariable> thispt
 COverview::~COverview() {
     Render::GL::g_pHyprOpenGL->makeEGLCurrent();
     images.clear(); // otherwise we get a vram leak
-    Cursor::overrideController->unsetOverride(Cursor::CURSOR_OVERRIDE_UNKNOWN);
+    Pointer::Cursor::overrideController->unsetOverride(Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
     if (pMonitor)
         pMonitor->m_blurFBDirty = true;
 }
@@ -126,7 +127,13 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
         int currentID         = methodStartID;
         images[0].workspaceID = currentID;
 
-        auto PWORKSPACESTART = g_pCompositor->getWorkspaceByID(currentID);
+        PHLWORKSPACE PWORKSPACESTART;
+        for (const auto& w : State::workspaceState()->workspacesCopy()) {
+            if (w->m_id == currentID) {
+                PWORKSPACESTART = w;
+                break;
+            }
+        }
         if (!PWORKSPACESTART)
             PWORKSPACESTART = CWorkspace::create(currentID, pMonitor.lock(), std::to_string(currentID));
 
@@ -174,7 +181,13 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
 
         clearWithColor(CHyprColor{0, 0, 0, 1.0});
 
-        const auto PWORKSPACE = g_pCompositor->getWorkspaceByID(image.workspaceID);
+        PHLWORKSPACE PWORKSPACE;
+        for (const auto& w : State::workspaceState()->workspacesCopy()) {
+            if (w->m_id == image.workspaceID) {
+                PWORKSPACE = w;
+                break;
+            }
+        }
 
         if (PWORKSPACE == startedOn)
             currentid = i;
@@ -182,7 +195,7 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
         if (PWORKSPACE) {
             image.pWorkspace            = PWORKSPACE;
             PMONITOR->m_activeWorkspace = PWORKSPACE;
-            g_pDesktopAnimationManager->startAnimation(PWORKSPACE, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
+            Animation::Workspace::startAnimation(PWORKSPACE, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
             PWORKSPACE->m_visible = true;
 
             if (PWORKSPACE == startedOn)
@@ -191,7 +204,7 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
             g_pHyprRenderer->renderWorkspace(PMONITOR, PWORKSPACE, Time::steadyNow(), monbox);
 
             PWORKSPACE->m_visible = false;
-            g_pDesktopAnimationManager->startAnimation(PWORKSPACE, CDesktopAnimationManager::ANIMATION_TYPE_OUT, false, true);
+            Animation::Workspace::startAnimation(PWORKSPACE, Animation::Workspace::ANIMATION_TYPE_OUT, false, true);
 
             if (PWORKSPACE == startedOn)
                 PMONITOR->m_activeSpecialWorkspace.reset();
@@ -210,13 +223,13 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
     PMONITOR->m_activeSpecialWorkspace = openSpecial;
     PMONITOR->m_activeWorkspace        = startedOn;
     startedOn->m_visible               = true;
-    g_pDesktopAnimationManager->startAnimation(startedOn, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
+    Animation::Workspace::startAnimation(startedOn, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
 
     // zoom on the current workspace.
     // const auto& TILE = images[std::clamp(currentid, 0, SIDE_LENGTH * SIDE_LENGTH)];
 
-    g_pAnimationManager->createAnimation(pMonitor->m_size * pMonitor->m_size / tileSize, size, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
-    g_pAnimationManager->createAnimation((-((pMonitor->m_size / (double)SIDE_LENGTH) * Vector2D{currentid % SIDE_LENGTH, currentid / SIDE_LENGTH}) * pMonitor->m_scale) *
+    Animation::mgr()->createAnimation(pMonitor->m_size * pMonitor->m_size / tileSize, size, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
+    Animation::mgr()->createAnimation((-((pMonitor->m_size / (double)SIDE_LENGTH) * Vector2D{currentid % SIDE_LENGTH, currentid / SIDE_LENGTH}) * pMonitor->m_scale) *
                                              (pMonitor->m_size / tileSize),
                                          pos, Config::animationTree()->getAnimationPropertyConfig("windowsMove"), AVARDAMAGE_NONE);
 
@@ -232,7 +245,7 @@ COverview::COverview(PHLWORKSPACE startedOn_, bool swipe_) :
 
     openedID = currentid;
 
-    Cursor::overrideController->setOverride("left_ptr", Cursor::CURSOR_OVERRIDE_UNKNOWN);
+    Pointer::Cursor::overrideController->setOverride("left_ptr", Pointer::Cursor::CURSOR_OVERRIDE_SPECIAL_ACTION);
 
     lastMousePosLocal = g_pInputManager->getMouseCoordsInternal() - pMonitor->m_position;
 
@@ -326,7 +339,7 @@ void COverview::redrawID(int id, bool forcelowres) {
 
     if (PWORKSPACE) {
         pMonitor->m_activeWorkspace = PWORKSPACE;
-        g_pDesktopAnimationManager->startAnimation(PWORKSPACE, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
+        Animation::Workspace::startAnimation(PWORKSPACE, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
         PWORKSPACE->m_visible = true;
 
         if (PWORKSPACE == startedOn)
@@ -335,7 +348,7 @@ void COverview::redrawID(int id, bool forcelowres) {
         g_pHyprRenderer->renderWorkspace(pMonitor.lock(), PWORKSPACE, Time::steadyNow(), monbox);
 
         PWORKSPACE->m_visible = false;
-        g_pDesktopAnimationManager->startAnimation(PWORKSPACE, CDesktopAnimationManager::ANIMATION_TYPE_OUT, false, true);
+        Animation::Workspace::startAnimation(PWORKSPACE, Animation::Workspace::ANIMATION_TYPE_OUT, false, true);
 
         if (PWORKSPACE == startedOn)
             pMonitor->m_activeSpecialWorkspace.reset();
@@ -348,7 +361,7 @@ void COverview::redrawID(int id, bool forcelowres) {
     pMonitor->m_activeSpecialWorkspace = openSpecial;
     pMonitor->m_activeWorkspace        = startedOn;
     startedOn->m_visible               = true;
-    g_pDesktopAnimationManager->startAnimation(startedOn, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
+    Animation::Workspace::startAnimation(startedOn, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
 
     blockOverviewRendering = false;
 }
@@ -385,7 +398,7 @@ void COverview::onDamageReported() {
     blockDamageReporting = true;
     g_pHyprRenderer->damageBox(texbox);
     blockDamageReporting = false;
-    g_pCompositor->scheduleFrameForMonitor(pMonitor.lock());
+    pMonitor->scheduleFrame();
 }
 
 int64_t COverview::selectedWorkspaceID() const {
@@ -425,7 +438,13 @@ void COverview::close(bool switchToSelection) {
         // which case some tiles will be left with this ID intentionally.
         const int  NEWID = TILE.workspaceID == WORKSPACE_INVALID ? getWorkspaceIDNameFromString("emptynm").id : TILE.workspaceID;
 
-        const auto NEWIDWS = g_pCompositor->getWorkspaceByID(NEWID);
+        PHLWORKSPACE NEWIDWS;
+        for (const auto& w : State::workspaceState()->workspacesCopy()) {
+            if (w->m_id == NEWID) {
+                NEWIDWS = w;
+                break;
+            }
+        }
 
         const auto OLDWS = pMonitor->m_activeWorkspace;
 
@@ -437,8 +456,8 @@ void COverview::close(bool switchToSelection) {
                 Log::logger->log(Log::ERR, "[hyprexpo] Failed to change workspace to {}", NEWIDWS->getConfigName());
         }
 
-        g_pDesktopAnimationManager->startAnimation(pMonitor->m_activeWorkspace, CDesktopAnimationManager::ANIMATION_TYPE_IN, true, true);
-        g_pDesktopAnimationManager->startAnimation(OLDWS, CDesktopAnimationManager::ANIMATION_TYPE_OUT, false, true);
+        Animation::Workspace::startAnimation(pMonitor->m_activeWorkspace, Animation::Workspace::ANIMATION_TYPE_IN, true, true);
+        Animation::Workspace::startAnimation(OLDWS, Animation::Workspace::ANIMATION_TYPE_OUT, false, true);
 
         startedOn = pMonitor->m_activeWorkspace;
     }
@@ -455,7 +474,7 @@ void COverview::onPreRender() {
 
 void COverview::onWorkspaceChange() {
     if (valid(startedOn))
-        g_pDesktopAnimationManager->startAnimation(startedOn, CDesktopAnimationManager::ANIMATION_TYPE_OUT, false, true);
+        Animation::Workspace::startAnimation(startedOn, Animation::Workspace::ANIMATION_TYPE_OUT, false, true);
     else
         startedOn = pMonitor->m_activeWorkspace;
 

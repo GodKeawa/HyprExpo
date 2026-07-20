@@ -19,6 +19,10 @@
 #include <hyprutils/string/ConstVarList.hpp>
 using namespace Hyprutils::String;
 
+#include <hyprland/src/output/Monitor.hpp>
+#include <hyprland/src/desktop/state/WindowState.hpp>
+#include <hyprland/src/desktop/state/GlobalWindowController.hpp>
+#include <hyprland/src/state/WorkspaceState.hpp>
 #include "globals.hpp"
 #include "overview.hpp"
 #include "scrollOverview.hpp"
@@ -57,7 +61,7 @@ static void hkRenderWorkspace(void* thisptr, PHLMONITOR pMonitor, PHLWORKSPACE p
 }
 
 static void hkAddDamageA(void* thisptr, const CBox& box) {
-    const auto PMONITOR = (CMonitor*)thisptr;
+    const auto PMONITOR = (Monitor::CMonitor*)thisptr;
 
     if (!g_pOverview || g_pOverview->pMonitor != PMONITOR->m_self || g_pOverview->blockDamageReporting) {
         ((origAddDamageA)g_pAddDamageHookA->m_original)(thisptr, box);
@@ -68,7 +72,7 @@ static void hkAddDamageA(void* thisptr, const CBox& box) {
 }
 
 static void hkAddDamageB(void* thisptr, const pixman_region32_t* rg) {
-    const auto PMONITOR = (CMonitor*)thisptr;
+    const auto PMONITOR = (Monitor::CMonitor*)thisptr;
 
     if (!g_pOverview || g_pOverview->pMonitor != PMONITOR->m_self || g_pOverview->blockDamageReporting) {
         ((origAddDamageB)g_pAddDamageHookB->m_original)(thisptr, rg);
@@ -82,7 +86,8 @@ static PHLWINDOW windowToBringFromWorkspace(const PHLWORKSPACE& workspace) {
     if (!workspace)
         return nullptr;
 
-    for (auto it = g_pCompositor->m_windows.rbegin(); it != g_pCompositor->m_windows.rend(); ++it) {
+    const auto& windows = Desktop::windowState()->windows();
+    for (auto it = windows.rbegin(); it != windows.rend(); ++it) {
         const auto& w = *it;
         if (!w || w->m_workspace != workspace || !w->m_isMapped || w->isHidden())
             continue;
@@ -105,7 +110,13 @@ static SDispatchResult bringWindowFromWorkspace(int64_t sourceWorkspaceID) {
     if (sourceWorkspaceID == MONITOR->activeWorkspaceID())
         return {};
 
-    const auto SOURCEWORKSPACE = g_pCompositor->getWorkspaceByID(sourceWorkspaceID);
+    PHLWORKSPACE SOURCEWORKSPACE;
+    for (const auto& w : State::workspaceState()->workspacesCopy()) {
+        if (w->m_id == sourceWorkspaceID) {
+            SOURCEWORKSPACE = w;
+            break;
+        }
+    }
     if (!SOURCEWORKSPACE)
         return {.success = false, .error = "selected workspace is not open"};
 
@@ -113,9 +124,9 @@ static SDispatchResult bringWindowFromWorkspace(int64_t sourceWorkspaceID) {
     if (!WINDOW)
         return {.success = false, .error = "selected workspace has no mapped windows"};
 
-    g_pCompositor->moveWindowToWorkspaceSafe(WINDOW, MONITOR->m_activeWorkspace);
+    Desktop::globalWindowController()->moveWindowToWorkspace(WINDOW, MONITOR->m_activeWorkspace);
     FOCUSSTATE->fullWindowFocus(WINDOW, Desktop::FOCUS_REASON_KEYBIND);
-    g_pCompositor->warpCursorTo(WINDOW->middle());
+    WINDOW->warpCursor();
     return {};
 }
 
@@ -273,8 +284,8 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     const std::string CLIENT_HASH = __hyprland_api_get_client_hash();
 
     if (HASH != CLIENT_HASH) {
-        failNotif("Version mismatch (headers ver is not equal to running hyprland ver)");
-        throw std::runtime_error("[he] Version mismatch");
+        HyprlandAPI::addNotification(PHANDLE, "[hyprexpo] Version mismatch, but loading anyway...", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        Log::logger->log(Log::WARN, "[hyprexpo] Version mismatch: Header hash {} != Client hash {}", HASH, CLIENT_HASH);
     }
 
     auto FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "renderWorkspace");
@@ -285,18 +296,18 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
     g_pRenderWorkspaceHook = HyprlandAPI::createFunctionHook(PHANDLE, FNS[0].address, (void*)hkRenderWorkspace);
 
-    FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "addDamageEPK15pixman_region32");
+    FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "_ZN7Monitor8CMonitor9addDamageEPK15pixman_region32");
     if (FNS.empty()) {
-        failNotif("no fns for hook addDamageEPK15pixman_region32");
-        throw std::runtime_error("[he] No fns for hook addDamageEPK15pixman_region32");
+        failNotif("no fns for hook _ZN7Monitor8CMonitor9addDamageEPK15pixman_region32");
+        throw std::runtime_error("[he] No fns for hook _ZN7Monitor8CMonitor9addDamageEPK15pixman_region32");
     }
 
     g_pAddDamageHookB = HyprlandAPI::createFunctionHook(PHANDLE, FNS[0].address, (void*)hkAddDamageB);
 
-    FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "_ZN8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
+    FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "_ZN7Monitor8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
     if (FNS.empty()) {
-        failNotif("no fns for hook _ZN8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
-        throw std::runtime_error("[he] No fns for hook _ZN8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
+        failNotif("no fns for hook _ZN7Monitor8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
+        throw std::runtime_error("[he] No fns for hook _ZN7Monitor8CMonitor9addDamageERKN9Hyprutils4Math4CBoxE");
     }
 
     g_pAddDamageHookA = HyprlandAPI::createFunctionHook(PHANDLE, FNS[0].address, (void*)hkAddDamageA);

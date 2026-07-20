@@ -10,7 +10,7 @@
 
 #include "IOverview.hpp"
 
-class CMonitor;
+namespace Monitor { class CMonitor; }
 
 class CScrollOverview : public IOverview {
   public:
