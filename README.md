@@ -1,3 +1,9 @@
+# ! Archived
+This is archived because https://github.com/sandwichfarm/hyprexpo is doing better
+
+I'm just too lazy.
+
+
 # HyprExpo
 HyprExpo is an overview plugin like niri. Forked from hyprland-plugins:hyprexpo as the original plugin is no longer maintained.
 
